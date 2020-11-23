@@ -1,0 +1,91 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#define pin 2
+
+
+const char* ssid     = "rgplus";
+const char* password = "2010201000";
+
+const char* server = "a1aicevVp3A.iot-as-mqtt.cn-shanghai.aliyuncs.com";
+const int port = 1883;
+const char* clientid = "ecSensor|securemode=3,signmethod=hmacsha256,timestamp=23122|";
+const char* mqttuser = "ecSensor&a1aicevVp3A";
+const char* mqttpass = "3F15B9D0B3B0B0C50DE2CC0C366B47F14ABF35B97AF479BEDE4722EB897A097E";
+// TOPICはデフォルトのものを利用
+const char* mqtttopic =  "/a1aicevVp3A/ecSensor/user/update";
+const char* subTopic = "/sys/a1aicevVp3A/ecSensor/thing/service/switch";
+int cnt = 0;
+char msg[100];
+
+WiFiClient client;
+PubSubClient mqttClient(client);
+
+void connAlibabaIoT() {
+    while (!mqttClient.connected()) {
+        if (mqttClient.connect(clientid, mqttuser, mqttpass)) {
+            Serial.println("Connected.");
+        } else {
+            Serial.print("Failed. Error state=");
+            Serial.println(mqttClient.state());
+            Serial.println(clientid);
+            // Wait 5 seconds before retrying
+            delay(500000);
+            
+        }
+    }
+}
+
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  Serial.println();
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+
+void setup() {
+  pinMode(pin, OUTPUT);
+
+  Serial.begin(115200);
+  delay(10);
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  delay(1000);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  mqttClient.setServer(server, port); 
+  connAlibabaIoT();
+}
+
+void loop() {
+// publishするタイミングを確認するためにLチカ。不要。
+delay(10);                      
+
+  if (!mqttClient.connected()) {
+        connAlibabaIoT();
+  }
+  mqttClient.loop();
+    //++cnt;
+    //snprintf (msg, 100, "{id:\"%05d\",data:\"hello world\"}", cnt);
+    //Serial.print("Publish message: ");
+    //Serial.println(msg);
+    //mqttClient.publish(mqtttopic, msg);
+    mqttClient.subscribe(subTopic,1);
+    mqttClient.setCallback(callback);
+    
+}
