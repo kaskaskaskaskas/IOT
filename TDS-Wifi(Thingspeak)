@@ -1,0 +1,281 @@
+#include <Arduino.h>
+
+/***************************************************
+ DFRobot Gravity: Analog TDS Sensor/Meter
+ <https://www.dfrobot.com/wiki/index.php/Gravity:_Analog_TDS_Sensor_/_Meter_For_Arduino_SKU:_SEN0244>
+ ***************************************************
+ This sample code shows how to read the tds value and calibrate it with the standard buffer solution.
+ 707ppm(1413us/cm)@25^c standard buffer solution is recommended.
+ Created 2018-1-3
+ By Jason <jason.ling@dfrobot.com@dfrobot.com>
+ GNU Lesser General Public License.
+ See <http://www.gnu.org/licenses/> for details.
+ All above must be included in any redistribution.
+ ****************************************************/
+
+ /***********Notice and Trouble shooting***************
+ 1. This code is tested on Arduino Uno with Arduino IDE 1.0.5 r2 and 1.8.2.
+ 2. Calibration CMD:
+     enter -> enter the calibration mode
+     cal:tds value -> calibrate with the known tds value(25^c). e.g.cal:707
+     exit -> save the parameters and exit the calibration mode
+ ****************************************************/
+ 
+#include <ThingSpeak.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+
+
+const char *ssid =  "KAS";                                    // replace with your wifi ssid and wpa2 key
+const char *pass =  "12345678";
+
+
+
+int keyIndex = 0;            // your network key Index number (needed only for WEP)
+WiFiClient  client;
+
+
+
+
+unsigned long myChannelNumber = 1110129;
+const char * myWriteAPIKey = "0E423EVFDCAIWW5Q";
+
+/*
+String str1 = "WingLam-IOT";
+String str2 = "永霖花園";
+String str3 = "WG-003" ;
+String str4 = "114.409561";
+String str5 = "22.409265";
+String str6;
+String str7;
+String str8;
+String myString = "";
+*/
+// ============================= NTP Client
+
+
+
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP);
+
+// Variables to save date and time
+String formattedDate;
+String dayStamp;
+String timeStamp;
+
+// reset flag
+
+bool flag = false;
+
+
+
+
+#include <GravityTDS.h>
+#include <EEPROM.h>
+
+#define TdsSensorPin 34
+GravityTDS gravityTds;
+
+float temperature,tdsValue = 0, ecValue = 0;
+
+// temperature sensor
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// GPIO where the DS18B20 is connected to
+const int oneWireBus = 4;     
+
+// Setup a oneWire instance to communicate with any OneWire devices
+OneWire oneWire(oneWireBus);
+
+// Pass our oneWire reference to Dallas Temperature sensor 
+DallasTemperature sensors(&oneWire);
+
+
+
+
+
+void setup()
+{
+  Serial.begin(115200);
+
+  WiFi.mode(WIFI_STA);   
+ 
+  ThingSpeak.begin(client);  // Initialize ThingSpeak
+
+
+    gravityTds.setPin(34);
+    gravityTds.setAref(3.3);  //reference voltage on ADC, default 5.0V on Arduino UNO
+    gravityTds.setAdcRange(4096);  //1024 for 10bit ADC;4096 for 12bit ADC
+    gravityTds.begin();  //initialization
+
+
+  // Start the DS18B20 sensor
+  //sensors.begin();
+
+
+
+
+
+// Initialize a NTPClient to get time
+  timeClient.begin();
+  // Set offset time in seconds to adjust for your timezone, for example:
+  // GMT +1 = 3600
+  // GMT +8 = 28800
+  // GMT -1 = -3600
+  // GMT 0 = 0
+  timeClient.setTimeOffset(28800);
+
+
+  
+}
+
+void loop()
+{
+
+    sensors.requestTemperatures(); 
+    temperature = sensors.getTempCByIndex(0);
+  
+
+  
+    gravityTds.setTemperature(temperature);  // set the temperature and execute temperature compensation
+    gravityTds.update();  //sample and calculate
+    tdsValue = gravityTds.getTdsValue();  // then get the value
+    ecValue = gravityTds.getEcValue();
+    Serial.print(tdsValue,0);
+    Serial.println("ppm");
+    Serial.println(temperature);
+    Serial.println(ecValue);
+    
+
+ // WiFiClient client = server.available();
+  
+  // int i = 0;
+
+  // Connect or reconnect to WiFi
+  if(WiFi.status() != WL_CONNECTED){
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    while(WiFi.status() != WL_CONNECTED){
+      WiFi.begin(ssid, pass); // Connect to WPA/WPA2 network. Change this line if using open or WEP network
+      Serial.print(".");
+      delay(5000);     
+
+          //  i=i+1;
+         //  if (i>100)
+          //  {Serial.print("I don´t connect......");
+         //   ESP.restart();
+        //    i = 0;
+        //    }
+     
+    } 
+    Serial.println("\nConnected.");
+  }
+
+// write to intelligent accounting
+
+
+  // include timeClient
+
+
+    while(!timeClient.update()) {
+    timeClient.forceUpdate();
+  }
+  // The formattedDate comes with the following format:
+  // 2018-05-28T16:00:13Z
+  // We need to extract date and time
+  formattedDate = timeClient.getFormattedTime();
+  Serial.println(formattedDate);
+
+
+
+  if ((timeClient.getMinutes()+1)%2 == 0 && flag == true){
+
+
+/*
+               HTTPClient http;   
+             
+               http.begin("https://intelligent-accounting.hk/api.php?type=upload");  //Specify destination for HTTP request
+              
+               http.addHeader("Content-Type", "text/plain");             //Specify content-type header
+            
+            
+               str6 = String(ecValue);
+               str7 = String(temperature);
+               Serial.println(str6);
+               Serial.println(str7);
+             
+               
+               myString = myString + "{\"ProjectName\":\"" + str1 + "\",";
+               myString = myString + "\"Location\":\"" + str2 + "\",";
+               myString = myString + "\"BoardID\":\"" + str3 + "\",";
+               myString = myString + "\"Latitude\":\"" + str5 + "\",";
+               myString = myString + "\"Longtitude\":\"" + str4 + "\",";
+               myString = myString + "\"Sensor\": [{";
+               myString = myString + "\"EC\":\"" + str6 + "\",";
+               myString = myString + "\"WaterTemp\":\"@" + str7 + "\"}]}";
+                           
+               int httpResponseCode = http.POST(myString);   //Send the actual POST request
+                
+               Serial.println(myString);
+               myString = "";
+               
+               if(httpResponseCode>0){
+ 
+               String response = http.getString();                       //Get the response to the request
+             
+                Serial.println(httpResponseCode);   //Print return code
+                Serial.println(response);           //Print request answer
+             
+               }else{
+             
+                Serial.print("Error on sending POST: ");
+                Serial.println(httpResponseCode);
+             
+               }
+             
+               http.end();  //Free resources
+*/
+  // Write to ThingSpeak. There are up to 8 fields in a channel, allowing you to store up to 8 different
+  // pieces of information in a channel.  Here, we write to field 1.
+
+
+    Serial.println("Got It");
+    
+        ThingSpeak.setField(1, ecValue);
+        ThingSpeak.setField(2, temperature);
+      
+        
+        int x = ThingSpeak.writeFields(myChannelNumber,myWriteAPIKey);
+      
+        if(x == 200){
+          Serial.println("Channel update successful.");
+        }
+        else{
+          Serial.println("Problem updating channel. HTTP error code " + String(x));
+        }
+  
+    flag = false;
+  
+  }
+
+
+if ((timeClient.getMinutes()+1)%2 != 0){
+
+    flag = true;
+  
+  }
+
+      
+  
+  delay(30000); // Wait 20 seconds to update the channel again
+
+
+
+    
+}
